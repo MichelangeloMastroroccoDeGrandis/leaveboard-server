@@ -1,5 +1,5 @@
 import express from 'express';
-import { loginUser } from '../controllers/authController.js'; // ✅ correct import
+import { loginUser } from '../controllers/authController.js'; 
 import { protect, adminOnly } from '../middleware/authMiddleware.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';

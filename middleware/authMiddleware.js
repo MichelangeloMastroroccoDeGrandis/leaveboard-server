@@ -4,28 +4,31 @@ import User from '../models/User.js';
 // Middleware to protect routes and verify JWT token
 // This middleware checks if the request has a valid JWT token in the Authorization header
 export const protect = async (req, res, next) => {
-  const authHeader = req.headers.authorization; // Extract the Authorization header from the request
+  const authHeader = req.headers.authorization;
 
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Not authorized, no token' });
   }
 
+  const token = authHeader.split(' ')[1];
+
   try {
-    const token = authHeader.split(' ')[1]; // Extract the token from the header
-   
-    const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the token using the secret key
-    
-    const user = await User.findById(decoded.userId).select('-password'); // Find the user by ID from the decoded token and exclude the password field
-     if (!user) {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await User.findById(decoded.userId).select('-password');
+    if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
 
-    req.user = user; // Attach the user to the request object
-
-    next(); // Proceed to the next middleware or route handler
+    req.user = user;
+    next();
   } catch (err) {
-   
-    res.status(401).json({ message: 'Not authorized, invalid token' });
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Token expired' });
+    } else if (err.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+    return res.status(500).json({ message: 'Something went wrong' });
   }
 };
 
