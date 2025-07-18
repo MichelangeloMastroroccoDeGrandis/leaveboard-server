@@ -27,6 +27,12 @@ app.use(helmet());
 // without this middleware, the server cannot read JSON data sent in requests
 app.use(express.json());
 
+connectDB();
+
+app.get('/', (req, res) => {
+  res.send('server is running');
+});
+
 // 6. Middleware to handle routes
 app.use('/api/auth', authRoutes); // Handles authentication routes like login and registration
 app.use('/api/dashboard', dashboardRoutes); // Handles dashboard routes 
@@ -43,20 +49,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Something went wrong!' });
 });
 
-// 7. Connect to DB in MongoDB
-// mongoose is a MongoDB object modeling tool designed to work in an asynchronous environment
-
-connectDB();
-
-// Basic test route to check if the server is running
-app.get('/', (req, res) => {
-    res.send('Server is running');
-    });
 
 // Set the port from environment variable or default to 5000
 const PORT = process.env.PORT || 5000;
 
 // Start the server and listen on the specified port
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
 });
