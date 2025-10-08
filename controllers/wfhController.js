@@ -74,16 +74,6 @@ export const requestWfh = async (req, res) => {
     // Fetch all Admins and Approvers
 const approvers = await User.find({ role: { $in: ['admin', 'approver'] } });
 
-let recipients = [];
-
-if (user.role === 'approver') {
-  // If requester is an approver, notify admins
-  recipients = await User.find({ role: 'admin' });
-} else {
-  // Otherwise, notify approvers
-  recipients = await User.find({ role: 'approver' });
-}
-
 // 1. Transporter is an object that manages the connection and communication with an SMTP server
 const transporter = nodemailer.createTransport({
   service: 'Gmail',
@@ -94,10 +84,10 @@ const transporter = nodemailer.createTransport({
 });
 
 // 2. mailOptions defines the email content, forEach() iterates over each approver (approver & admin) to send the email
-recipients.forEach((recipient) => {
+approvers.forEach((approver) => {
   const mailOptions = {
     from: process.env.EMAIL_USER,
-    to: recipient.email,
+    to: approver.email,
     subject: `New WFH Request from ${user.name}`,
     text: `${user.name} has requested ${type.toUpperCase()} for ${date}. Please review it in the approval page.`,
   };
