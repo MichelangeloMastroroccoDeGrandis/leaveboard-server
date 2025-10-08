@@ -72,7 +72,7 @@ export const requestWfh = async (req, res) => {
 
     // Send Email to Admin/Approver (next step)
     // Fetch all Admins and Approvers
-const approvers = await User.find({ role: { $in: ['admin', 'approver'] } });
+const approvers = await User.find({ role: { $in: ['approver'] } });
 
 // 1. Transporter is an object that manages the connection and communication with an SMTP server
 const transporter = nodemailer.createTransport({
