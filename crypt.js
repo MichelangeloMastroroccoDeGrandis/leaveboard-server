@@ -32,7 +32,10 @@ const userSchema = new mongoose.Schema({
   isActive: Boolean,
   createdAt: Date,
   updatedAt: Date,
-});
+}, {
+    collection: 'user'
+  }
+);
 
 const User = mongoose.model("User", userSchema);
 
