@@ -164,8 +164,10 @@ export const rejectRequest = async (req, res) => {
 
     if (!request) return res.status(404).json({ message: 'Request not found' });
 
-    request.status = 'rejected'; // Set request status to rejected
-    await request.save(); // Save the updated request
+    // request.status = 'rejected'; // Set request status to rejected UNCOMMENT IF YOU WANT TO SAVE STATUS IN FUTURE
+    //await request.save(); // Save the updated request UNCOMMENT IF YOU WANT TO SAVE STATUS IN FUTURE
+
+    await request.deleteOne();
 
     // Send rejection email
     const transporter = nodemailer.createTransport({
