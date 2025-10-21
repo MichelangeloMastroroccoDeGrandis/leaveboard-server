@@ -73,21 +73,39 @@ export const requestWfh = async (req, res) => {
     // Send Email to Admin/Approver (next step)
     // Fetch all Admins and Approvers
 const approvers = await User.find({ role: { $in: ['approver'] } });
+const admins = await User.find({ role: 'admin' });
+const recipients = user.role === 'approver' ? admins : approvers;
+
+let transporter;
 
 // 1. Transporter is an object that manages the connection and communication with an SMTP server
-const transporter = nodemailer.createTransport({
+if(process.env.NODE_ENV === 'development') {
+  transporter = nodemailer.createTransport({
   service: 'Gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
-  },
+    port: 587,
+    secure: false,
+  },tls: {
+    rejectUnauthorized: false, // <-- allow self-signed
+  }
 });
+} else if(process.env.NODE_ENV === 'production') {
+transporter = nodemailer.createTransport({
+  service: 'Gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  }
+});
+}
 
 // 2. mailOptions defines the email content, forEach() iterates over each approver (approver & admin) to send the email
-approvers.forEach((approver) => {
+recipients.forEach((recipient) => {
   const mailOptions = {
     from: process.env.EMAIL_USER,
-    to: approver.email,
+    to: recipient.email,
     subject: `New WFH Request from ${user.name}`,
     text: `${user.name} has requested ${type.toUpperCase()} for ${date}. Please review it in the approval page.`,
   };
@@ -109,7 +127,7 @@ approvers.forEach((approver) => {
 // Return all pending WFH requests
 export const getPendingRequests = async (req, res) => {
   try {
-    const requests = await WfhRequest.find({ status: 'pending' }).populate('user', 'name email position');
+    const requests = await WfhRequest.find({ status: 'pending' }).populate('user', 'name email position role');
     res.status(200).json(requests);
   } catch (err) {
     console.error(err);
