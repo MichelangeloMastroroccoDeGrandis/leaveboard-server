@@ -32,7 +32,7 @@ router.get('/', protect, async (req, res) => {
     const users = await User.find().select('name email');
 
     const requests = await wfhRequestSchema.find({
-      status: 'approved',
+      status: { $in: ['approved', 'pending'] },
       date: { $gte: start, $lte: end }
     }).populate('user', 'name email role');
 

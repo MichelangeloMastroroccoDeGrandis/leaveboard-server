@@ -32,6 +32,13 @@ export const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        position: user.position,
+        team: user.team,
+        office: user.office,
+        country: user.country,
+        wfhWeekly: user.wfhWeekly,
+        leaveCounts: user.leaveCounts,
+        isActive: user.isActive,
       }
     });
   } catch (err) {

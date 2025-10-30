@@ -103,11 +103,12 @@ transporter = nodemailer.createTransport({
 
 // 2. mailOptions defines the email content, forEach() iterates over each approver (approver & admin) to send the email
 recipients.forEach((recipient) => {
+  const APP_URL = process.env.FRONTEND_URL || process.env.VITE_BASE_URL || 'http://localhost:7091';
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: recipient.email,
     subject: `New WFH Request from ${user.name}`,
-    text: `${user.name} has requested ${type.toUpperCase()} for ${date}. Please review it in the approval page.`,
+    text: `${user.name} has requested ${type.toUpperCase()} for ${date}.\n\nPlease review it in the approval page:\n${APP_URL}`,
   };
 
 // 3. Send email to each approver
@@ -132,6 +133,18 @@ export const getPendingRequests = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to fetch requests' });
+  }
+};
+
+// Return all approved WFH requests
+export const getApprovedRequests = async (req, res) => {
+  try {
+    const requests = await WfhRequest.find({ status: 'approved' })
+      .populate('user', 'name email position role');
+    res.status(200).json(requests);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch approved requests' });
   }
 };
 
@@ -207,5 +220,38 @@ export const rejectRequest = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to reject request' });
+  }
+};
+
+//Delete WFH request by ID (Admin Only)
+export const deleteRequest = async (req, res) => {
+  try {
+    const request = await WfhRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ message: 'Request not found' });
+
+    await request.deleteOne();
+    res.json({ message: 'Request deleted successfully', id: req.params.id });
+  } catch (err) {
+    console.error('Error deleting request:', err);
+    res.status(500).json({ message: 'Failed to delete request' });
+  }
+};
+
+// Update the date of a WFH request
+export const updateRequestDate = async (req, res) => {
+  try {
+    const { date } = req.body;
+    if (!date) return res.status(400).json({ message: 'Date is required' });
+
+    const request = await WfhRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ message: 'Request not found' });
+
+    request.date = date;
+    await request.save();
+
+    res.json(request);
+  } catch (err) {
+    console.error('Error updating date:', err);
+    res.status(500).json({ message: 'Failed to update date' });
   }
 };

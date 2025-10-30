@@ -1,21 +1,36 @@
 import express from 'express';
-import { protect, adminOnly } from '../middleware/authMiddleware.js';
+import { protect } from '../middleware/authMiddleware.js';
 import {
     requestWfh,
     getPendingRequests,
     approveRequest,
-    rejectRequest
+    getApprovedRequests,
+    rejectRequest,
+    deleteRequest,
+    updateRequestDate
 } from '../controllers/wfhController.js';
-
-// List of Routes for Work From Home (WFH) requests
 
 const router = express.Router();
 
-// POST /api/wfh/request
+router.use((req, res, next) => {
+  console.log(`[WFH ROUTES] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// POST new WFH request
 router.post('/request', protect, requestWfh);
 
-router.get('/approvals', protect, adminOnly, getPendingRequests);
+// Approve / Reject
 router.post('/approvals/:id/approve', protect, approveRequest);
 router.post('/approvals/:id/reject', protect, rejectRequest);
+
+// ---- IMPORTANT: specific routes first ----
+// Update & Delete approved requests
+router.put('/approved/:id/date', protect, updateRequestDate);
+router.delete('/approved/:id', protect, deleteRequest);
+
+// GET requests
+router.get('/approvals', protect, getPendingRequests); // pending
+router.get('/approved', protect, getApprovedRequests); // approved
 
 export default router;
