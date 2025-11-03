@@ -13,14 +13,15 @@ router.post('/login', loginUser);
 
 // Admin creates user
 router.post('/register', protect, adminOnly, async (req, res) => {
-  const { name, email, password, role, position, team, office, country } = req.body;
+  const { name, email, password, role, position, team, office, country, wfhWeekly, leaveCounts } = req.body;
 
   const existingUser = await User.findOne({ email });
   if (existingUser) return res.status(400).json({ message: 'User already exists' });
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  const user = await User.create({
+  // Build payload, applying types where relevant and only setting optional fields if provided
+  const userPayload = {
     name,
     email,
     password: hashedPassword,
@@ -29,7 +30,29 @@ router.post('/register', protect, adminOnly, async (req, res) => {
     team,
     office,
     country,
-  });
+  };
+
+  // Only set wfhWeekly if provided (non-empty), otherwise let schema default apply
+  if (wfhWeekly !== undefined && wfhWeekly !== '') {
+    userPayload.wfhWeekly = Number(wfhWeekly);
+  }
+
+  // Optionally allow leaveCounts to be set if provided
+  if (leaveCounts && typeof leaveCounts === 'object') {
+    userPayload.leaveCounts = {};
+    if (leaveCounts.sickLeave !== undefined && leaveCounts.sickLeave !== '') {
+      userPayload.leaveCounts.sickLeave = Number(leaveCounts.sickLeave);
+    }
+    if (leaveCounts.timeOff !== undefined && leaveCounts.timeOff !== '') {
+      userPayload.leaveCounts.timeOff = Number(leaveCounts.timeOff);
+    }
+    // Remove leaveCounts if it ended up empty so defaults can apply
+    if (Object.keys(userPayload.leaveCounts).length === 0) {
+      delete userPayload.leaveCounts;
+    }
+  }
+
+  const user = await User.create(userPayload);
 
   res.status(201).json({ message: 'User created successfully', user });
 });
