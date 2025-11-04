@@ -79,14 +79,14 @@ const recipients = user.role === 'approver' ? admins : approvers;
 let transporter;
 
 // 1. Transporter is an object that manages the connection and communication with an SMTP server
-if(process.env.NODE_ENV === 'development') {
+if(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'staging') {
   transporter = nodemailer.createTransport({
   service: 'Gmail',
+  port: 587,
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
-    port: 587,
-    secure: false,
   },tls: {
     rejectUnauthorized: false, // <-- allow self-signed
   }
