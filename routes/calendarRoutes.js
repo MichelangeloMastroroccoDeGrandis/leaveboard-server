@@ -15,9 +15,9 @@ function getWeekRange() {
   const monday = new Date(today.setDate(diffToMonday));
   monday.setHours(0, 0, 0, 0);
 
-  // End = Sunday of next week (13 days after Monday)
+  // End = Sunday of the 4th week window (27 days after Monday)
   const end = new Date(monday);
-  end.setDate(monday.getDate() + 13);
+  end.setDate(monday.getDate() + 27);
   end.setHours(23, 59, 59, 999);
 
   return { start: monday, end };

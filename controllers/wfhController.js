@@ -13,8 +13,18 @@ export const requestWfh = async (req, res) => {
   try {
 
     // Extracting type and date from request body and user from request object
-    const { type, date } = req.body;
-    const user = req.user;
+    const { type, date, userId, allowAnyDate } = req.body;
+    const actor = req.user;
+
+    // Determine the target user: default to the requester; allow admin/approver to specify userId
+    let user = actor;
+    if (userId && ['admin', 'approver'].includes(actor.role)) {
+      const maybeUser = await User.findById(userId);
+      if (!maybeUser) {
+        return res.status(404).json({ message: 'Target user not found' });
+      }
+      user = maybeUser;
+    }
 
     // Validate date is within the next week
     const selectedDate = parseISO(date); // parseISO convert date string to Date object
@@ -26,13 +36,11 @@ export const requestWfh = async (req, res) => {
     if (selectedDate.getDay() === 6 || selectedDate.getDay() === 0) { 
       return res.status(400).json({ message: 'WFH requests on Weekend are not allowed.' });
     }
+    // Re-apply next-week-only constraint unless explicitly allowed by caller
     const today = new Date();
-    const nextWeekStart = startOfWeek(addWeeks(today, 1), { weekStartsOn: 1 }); // startOfWeek gets the start of the week for a given date, addWeeks adds 1 week to today
-    const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 }); // endOfWeek gets the end of the week for a given date, addWeeks adds 1 week to today
-
-    // Week Constraint
-    // isWithinInterval checks if the date is within a specified interval, if not within the next week, return error
-    if (!isWithinInterval(selectedDate, { start: nextWeekStart, end: nextWeekEnd })) { 
+    const nextWeekStart = startOfWeek(addWeeks(today, 1), { weekStartsOn: 1 });
+    const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 });
+    if (!allowAnyDate && !isWithinInterval(selectedDate, { start: nextWeekStart, end: nextWeekEnd })) {
       return res.status(400).json({ message: 'You can only request WFH for next week.' });
     }
 
@@ -74,7 +82,8 @@ export const requestWfh = async (req, res) => {
     // Fetch all Admins and Approvers
 const approvers = await User.find({ role: { $in: ['approver'] } });
 const admins = await User.find({ role: 'admin' });
-const recipients = user.role === 'approver' ? admins : approvers;
+// If the actor is an approver, notify admins; otherwise notify approvers
+const recipients = actor.role === 'approver' ? admins : approvers;
 
 let transporter;
 
