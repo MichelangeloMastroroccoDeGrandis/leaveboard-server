@@ -1,7 +1,9 @@
 import WfhRequest from '../models/WfhRequest.js'; // Importing WfhRequest schema from models 
 import User from '../models/User.js';
+import Holiday from '../models/Holiday.js';
+import WfhSettings from '../models/WfhSettings.js';
 import nodemailer from 'nodemailer';
-import { startOfWeek, endOfWeek, isWithinInterval, addWeeks, parseISO } from 'date-fns';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, addWeeks, parseISO } from 'date-fns';
 
 export const requestWfh = async (req, res) => {
 
@@ -26,25 +28,67 @@ export const requestWfh = async (req, res) => {
       user = maybeUser;
     }
 
-    // Validate date is within the next week
+    // Validate date against dynamic WFH settings
     const selectedDate = parseISO(date); // parseISO convert date string to Date object
 
+    const settings = await WfhSettings.findOne() || new WfhSettings();
 
-    if (selectedDate.getDay() === 5) { 
-      return res.status(400).json({ message: 'WFH requests on Fridays are not allowed.' });
-    }
-    if (selectedDate.getDay() === 6 || selectedDate.getDay() === 0) { 
-      return res.status(400).json({ message: 'WFH requests on Weekend are not allowed.' });
-    }
-    // Re-apply next-week-only constraint unless explicitly allowed by caller
     const today = new Date();
-    const nextWeekStart = startOfWeek(addWeeks(today, 1), { weekStartsOn: 1 });
-    const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 });
-    if (!allowAnyDate && !isWithinInterval(selectedDate, { start: nextWeekStart, end: nextWeekEnd })) {
-      return res.status(400).json({ message: 'You can only request WFH for next week.' });
+    const intervals = [];
+
+    const scopes = settings.allowedDateScopes || {};
+
+    // This week
+    if (scopes.thisWeek) {
+      intervals.push({
+        start: startOfWeek(today, { weekStartsOn: 1 }),
+        end: endOfWeek(today, { weekStartsOn: 1 }),
+      });
     }
 
-    // WFH Limit Per Week
+    // Next week
+    if (scopes.nextWeek) {
+      const nextWeekStart = startOfWeek(addWeeks(today, 1), { weekStartsOn: 1 });
+      const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 });
+      intervals.push({ start: nextWeekStart, end: nextWeekEnd });
+    }
+
+    // Within current month
+    if (scopes.withinMonth) {
+      intervals.push({
+        start: startOfMonth(today),
+        end: endOfMonth(today),
+      });
+    }
+
+    // Backwards compatibility: if no scopes configured and allowAnyDate is not set, fallback to original next-week-only rule
+    if (!allowAnyDate) {
+      if (intervals.length === 0) {
+        const nextWeekStart = startOfWeek(addWeeks(today, 1), { weekStartsOn: 1 });
+        const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 });
+        if (!isWithinInterval(selectedDate, { start: nextWeekStart, end: nextWeekEnd })) {
+          return res.status(400).json({ message: 'You can only request WFH for next week.' });
+        }
+      } else {
+        const inAnyInterval = intervals.some(({ start, end }) =>
+          isWithinInterval(selectedDate, { start, end })
+        );
+        if (!inAnyInterval) {
+          return res.status(400).json({ message: 'Selected date is outside the allowed WFH date range.' });
+        }
+      }
+    }
+
+    // Weekday disallow rules
+    const disallowedWeekdays = settings.disallowedWeekdays && settings.disallowedWeekdays.length
+      ? settings.disallowedWeekdays
+      : [1, 5, 0, 6]; // default: Monday, Friday, weekend
+
+    if (disallowedWeekdays.includes(selectedDate.getDay())) {
+      return res.status(400).json({ message: 'WFH requests on this weekday are not allowed.' });
+    }
+
+    // WFH Limit Per Week (adjusted by number of holidays in the same week)
     const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
     const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
 
@@ -54,20 +98,48 @@ export const requestWfh = async (req, res) => {
       type: 'wfh',
     });
 
-    const maxDays = user.wfhWeekly || 1; // Define max WFH days per week based on position, if position is CTO, CEO or COO, max days is 2, otherwise it is 1
-    if (userRequests.length >= maxDays) {
-      return res.status(400).json({ message: `You can request up to ${maxDays} WFH day(s) per week.` });
+    // Count holidays in the same week as the requested date
+    const holidaysInWeek = await Holiday.countDocuments({
+      date: { $gte: weekStart, $lte: weekEnd },
+    });
+
+    const baseMaxDays = user.wfhWeekly || 1;
+    const effectiveMaxDays = Math.max(0, baseMaxDays - holidaysInWeek);
+
+    if (effectiveMaxDays <= 0) {
+      const message = holidaysInWeek > 0
+        ? 'No WFH allowed this week because of public holidays.'
+        : `No WFH allowed this week. Your weekly allowance is ${baseMaxDays} day(s), already used.`;
+      return res.status(400).json({ message });
     }
 
-    // Colleague Conflict
-    const conflict = await WfhRequest.findOne({
+    if (userRequests.length >= effectiveMaxDays) {
+      const message = holidaysInWeek > 0
+        ? `You can request up to ${effectiveMaxDays} WFH day(s) this week due to public holidays.`
+        : `You can request up to ${effectiveMaxDays} WFH day(s) per week.`;
+      return res.status(400).json({ message });
+    }
+
+    // Colleague Conflict with per-position concurrency limit
+    const concurrentApproved = await WfhRequest.find({
       date,
       type: 'wfh',
       status: 'approved',
     }).populate('user');
 
-    if (conflict && conflict.user.position === user.position) {
-      return res.status(400).json({ message: `Colleague ${conflict.user.name} already has WFH on this date.` });
+    const samePositionCount = concurrentApproved.filter((reqDoc) =>
+      reqDoc.user && reqDoc.user.position === user.position
+    ).length;
+
+    const positionConcurrencyMap = settings.positionConcurrency || new Map();
+    const allowedForPosition = positionConcurrencyMap.get
+      ? (positionConcurrencyMap.get(user.position) ?? 1)
+      : (positionConcurrencyMap[user.position] ?? 1);
+
+    if (samePositionCount >= allowedForPosition) {
+      return res.status(400).json({
+        message: `There are already ${samePositionCount} colleague(s) with position ${user.position} working from home on this date. Maximum allowed is ${allowedForPosition}.`,
+      });
     }
 
     // Save Request (pending by default)
@@ -252,11 +324,41 @@ export const updateRequestDate = async (req, res) => {
     const { date } = req.body;
     if (!date) return res.status(400).json({ message: 'Date is required' });
 
-    const request = await WfhRequest.findById(req.params.id);
+    const request = await WfhRequest.findById(req.params.id).populate('user');
     if (!request) return res.status(404).json({ message: 'Request not found' });
 
+    const oldDate = request.date;
     request.date = date;
     await request.save();
+
+    // Notify user about the date change
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'Gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+      });
+
+      const formatDate = (d) => {
+        try {
+          return new Date(d).toISOString().slice(0, 10);
+        } catch {
+          return String(d);
+        }
+      };
+
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: request.user.email,
+        subject: 'Your WFH request date has been updated',
+        text: `Hi ${request.user.name}, your approved WFH request has been updated.\n\nOld date: ${formatDate(oldDate)}\nNew date: ${formatDate(request.date)}.`,
+      });
+    } catch (mailErr) {
+      console.error('Error sending WFH date change email:', mailErr);
+      // Do not fail the API call if email sending fails
+    }
 
     res.json(request);
   } catch (err) {

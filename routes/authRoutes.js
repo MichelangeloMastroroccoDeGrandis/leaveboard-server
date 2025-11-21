@@ -54,6 +54,17 @@ router.post('/register', protect, adminOnly, async (req, res) => {
 
   const user = await User.create(userPayload);
 
+  // Send welcome email to the newly created user (non-blocking for response)
+  try {
+    await sendEmail({
+      to: user.email,
+      subject: 'Welcome to LeaveBoard',
+      text: `Hi ${user.name},\n\nYour account has been created successfully. You can now log in and start using the system.`,
+    });
+  } catch (err) {
+    console.error('[AUTH] Failed to send welcome email:', err);
+  }
+
   res.status(201).json({ message: 'User created successfully', user });
 });
 

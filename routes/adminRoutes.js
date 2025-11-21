@@ -22,6 +22,15 @@ router.delete('/users/:id', protect, adminOnly, async (req, res) => {
       return res.status(400).json({ message: "You cannot delete your own account." });
     }
 
+    // Do not allow deletion of superuser accounts
+    const target = await User.findById(userId);
+    if (!target) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if (target.role === 'superuser') {
+      return res.status(403).json({ message: 'You cannot delete a superuser account' });
+    }
+
     // First, delete all WFH requests by this user
     await WfhRequest.deleteMany({ user: userId });
 
@@ -54,6 +63,29 @@ router.put('/users/:id/password', protect, adminOnly, async (req, res) => {
 
     res.json({ message: 'Password updated successfully' });
   } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update user's wfhWeekly
+router.put('/users/:id/wfhWeekly', protect, adminOnly, async (req, res) => {
+  try {
+    const { wfhWeekly } = req.body;
+    const num = Number(wfhWeekly);
+
+    if (Number.isNaN(num) || num < 0) {
+      return res.status(400).json({ message: 'wfhWeekly must be a non-negative number' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.wfhWeekly = num;
+    await user.save();
+
+    res.json({ message: 'wfhWeekly updated successfully', wfhWeekly: user.wfhWeekly });
+  } catch (err) {
+    console.error('Error updating wfhWeekly:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

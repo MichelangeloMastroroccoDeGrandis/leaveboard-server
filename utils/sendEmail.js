@@ -1,13 +1,30 @@
 import nodemailer from 'nodemailer';
 
 const sendEmail = async ({ to, subject, text }) => {
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER, // Your Gmail address
-      pass: process.env.EMAIL_PASS, // App password (not your normal password)
-    },
-  });
+  let transporter;
+
+  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'staging') {
+    transporter = nodemailer.createTransport({
+      service: 'Gmail',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false, // allow self-signed in dev/staging
+      },
+    });
+  } else {
+    transporter = nodemailer.createTransport({
+      service: 'Gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+  }
 
   await transporter.sendMail({
     from: `"LeaveBoard" <${process.env.EMAIL_USER}>`,

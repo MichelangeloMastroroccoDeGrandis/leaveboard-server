@@ -37,9 +37,9 @@ export const protect = async (req, res, next) => {
 
 // Middleware to check if the user is an admin or approver
 export const adminOnly = (req, res, next) => {
-   if (req.user && ['admin', 'approver'].includes(req.user.role)) {
+  if (req.user && ['superuser', 'admin', 'approver'].includes(req.user.role)) {
     next();
   } else {
-    res.status(403).json({ message: 'Access denied. Admins or Approvers only.' });
+    res.status(403).json({ message: 'Access denied. Superuser/Admin/Approver only.' });
   }
 };
